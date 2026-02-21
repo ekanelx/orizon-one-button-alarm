@@ -21,15 +21,13 @@ export function useGestures({ onTap, onDoubleTap, onHold }: GestureHandlers) {
         if (holdTimeout.current) clearTimeout(holdTimeout.current);
     };
 
-    const startInteraction = useCallback((e: React.TouchEvent | React.MouseEvent) => {
-        // Only process left clicks for mouse events
-        if (e.type === 'mousedown' && (e as React.MouseEvent).button !== 0) return;
+    const startInteraction = useCallback((e: React.PointerEvent) => {
+        // Only process primary pointer (usually left click for mouse)
+        if (e.button !== 0) return;
 
         // Attempt to prevent default context menus/selections on touch
-        if (e.type === 'touchstart' && e.cancelable) {
-            // Keep minimal default behavior for standard browser scrolls 
-            // but prevent context menu on long press
-        }
+        // e.preventDefault() cannot be reliably called here without potentially breaking scrolling
+        // on some browsers. Better handled via CSS `touch-action: none`.
 
         isHolding.current = false;
 
@@ -48,8 +46,8 @@ export function useGestures({ onTap, onDoubleTap, onHold }: GestureHandlers) {
         }, HOLD_DELAY);
     }, [onHold]);
 
-    const endInteraction = useCallback((e: React.TouchEvent | React.MouseEvent) => {
-        if (e.type === 'mouseup' && (e as React.MouseEvent).button !== 0) return;
+    const endInteraction = useCallback((e: React.PointerEvent) => {
+        if (e.button !== 0) return;
 
         if (holdTimeout.current) clearTimeout(holdTimeout.current);
 
@@ -94,11 +92,9 @@ export function useGestures({ onTap, onDoubleTap, onHold }: GestureHandlers) {
     }, [onTap, onDoubleTap]);
 
     return {
-        onMouseDown: startInteraction,
-        onMouseUp: endInteraction,
-        onMouseLeave: endInteraction, // Cancel if cursor leaves the button
-        onTouchStart: startInteraction,
-        onTouchEnd: endInteraction,
-        onTouchCancel: endInteraction, // Cancel if gesture is aborted
+        onPointerDown: startInteraction,
+        onPointerUp: endInteraction,
+        onPointerLeave: endInteraction, // Cancel if cursor leaves the button
+        onPointerCancel: endInteraction, // Cancel if gesture is aborted by the system
     };
 }
