@@ -1,0 +1,40 @@
+@import 'tailwindcss';
+
+@theme {
+  /* Colors from Figma DS */
+  --color-bg-base: #1C1C1E;
+  --color-text-primary: #FFFFFF;
+  --color-text-secondary: #8E8E93;
+  --color-accent: #0A84FF;
+  --color-accent-dim: rgba(10, 132, 255, 0.2);
+  --color-danger: #FF453A;
+  
+  /* Buttons */
+  --color-btn-glass: rgba(255, 255, 255, 0.15);
+  --color-btn-glass-hover: rgba(255, 255, 255, 0.25);
+  
+  /* Fonts */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'SF Mono', ui-monospace, monospace;
+}
+
+body {
+  background-color: var(--color-bg-base);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  overscroll-behavior-y: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Hide scrollbar for IE, Edge and Firefox */
+.no-scrollbar {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
