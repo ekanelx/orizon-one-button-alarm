@@ -11,6 +11,7 @@ export function useGestures({ onTap, onDoubleTap, onHold }: GestureHandlers) {
     const tapTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
     const holdTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isHolding = useRef(false);
+    const isDown = useRef(false);
 
     // Tunable parameters
     const DOUBLE_TAP_DELAY = 300; // ms
@@ -29,25 +30,31 @@ export function useGestures({ onTap, onDoubleTap, onHold }: GestureHandlers) {
         // e.preventDefault() cannot be reliably called here without potentially breaking scrolling
         // on some browsers. Better handled via CSS `touch-action: none`.
 
+        isDown.current = true;
         isHolding.current = false;
 
         // Clear previous hold timeout if starting a new one
         if (holdTimeout.current) clearTimeout(holdTimeout.current);
 
         holdTimeout.current = setTimeout(() => {
-            isHolding.current = true;
-            if (onHold) {
-                // Haptic feedback stub
-                if (typeof window !== 'undefined' && window.navigator && window.navigator.vibrate) {
-                    window.navigator.vibrate(50); // Stronger haptic for Hold
+            if (isDown.current) {
+                isHolding.current = true;
+                if (onHold) {
+                    // Haptic feedback stub
+                    if (typeof window !== 'undefined' && window.navigator && window.navigator.vibrate) {
+                        window.navigator.vibrate(50); // Stronger haptic for Hold
+                    }
+                    onHold();
                 }
-                onHold();
             }
         }, HOLD_DELAY);
     }, [onHold]);
 
     const endInteraction = useCallback((e: React.PointerEvent) => {
         if (e.button !== 0) return;
+        if (!isDown.current) return;
+
+        isDown.current = false;
 
         if (holdTimeout.current) clearTimeout(holdTimeout.current);
 
@@ -91,10 +98,17 @@ export function useGestures({ onTap, onDoubleTap, onHold }: GestureHandlers) {
         }
     }, [onTap, onDoubleTap]);
 
+    const abortInteraction = useCallback(() => {
+        if (!isDown.current) return;
+        isDown.current = false;
+        if (holdTimeout.current) clearTimeout(holdTimeout.current);
+        isHolding.current = false;
+    }, []);
+
     return {
         onPointerDown: startInteraction,
         onPointerUp: endInteraction,
-        onPointerLeave: endInteraction, // Cancel if cursor leaves the button
-        onPointerCancel: endInteraction, // Cancel if gesture is aborted by the system
+        onPointerLeave: abortInteraction, // Cancel if cursor leaves the button while pressed
+        onPointerCancel: abortInteraction, // Cancel if gesture is aborted by the system
     };
 }
