@@ -22,13 +22,15 @@ export function useGestures({ onTap, onDoubleTap, onHold }: GestureHandlers) {
         if (holdTimeout.current) clearTimeout(holdTimeout.current);
     };
 
-    const startInteraction = useCallback((e: React.PointerEvent) => {
-        // Only process primary pointer (usually left click for mouse, first finger for touch)
-        if (e.button !== 0 || !e.isPrimary) return;
+    const startInteraction = useCallback((e: React.TouchEvent | React.MouseEvent) => {
+        // Only process primary interactions
+        if ('button' in e && e.button !== 0) return;
 
-        // Attempt to prevent default context menus/selections on touch
-        // e.preventDefault() cannot be reliably called here without potentially breaking scrolling
-        // on some browsers. Better handled via CSS `touch-action: none`.
+        // Prevent default on touch to stop browser gestures (scroll, swipe-to-back, zoom)
+        // We only prevent default if it's cancelable to avoid console warnings
+        if ('touches' in e && e.cancelable) {
+            e.preventDefault();
+        }
 
         isDown.current = true;
         isHolding.current = false;
@@ -50,8 +52,8 @@ export function useGestures({ onTap, onDoubleTap, onHold }: GestureHandlers) {
         }, HOLD_DELAY);
     }, [onHold]);
 
-    const endInteraction = useCallback((e: React.PointerEvent) => {
-        if (e.button !== 0 || !e.isPrimary) return;
+    const endInteraction = useCallback((e: React.TouchEvent | React.MouseEvent) => {
+        if ('button' in e && e.button !== 0) return;
         if (!isDown.current) return;
 
         isDown.current = false;
@@ -98,8 +100,7 @@ export function useGestures({ onTap, onDoubleTap, onHold }: GestureHandlers) {
         }
     }, [onTap, onDoubleTap]);
 
-    const abortInteraction = useCallback((e: React.PointerEvent) => {
-        if (!e.isPrimary) return;
+    const abortInteraction = useCallback(() => {
         if (!isDown.current) return;
         isDown.current = false;
         if (holdTimeout.current) clearTimeout(holdTimeout.current);
@@ -107,9 +108,11 @@ export function useGestures({ onTap, onDoubleTap, onHold }: GestureHandlers) {
     }, []);
 
     return {
-        onPointerDown: startInteraction,
-        onPointerUp: endInteraction,
-        onPointerLeave: abortInteraction, // Cancel if cursor leaves the button while pressed
-        onPointerCancel: abortInteraction, // Cancel if gesture is aborted by the system
+        onTouchStart: startInteraction,
+        onTouchEnd: endInteraction,
+        onTouchCancel: abortInteraction,
+        onMouseDown: startInteraction,
+        onMouseUp: endInteraction,
+        onMouseLeave: abortInteraction,
     };
 }
