@@ -23,8 +23,8 @@ export function useGestures({ onTap, onDoubleTap, onHold }: GestureHandlers) {
     };
 
     const startInteraction = useCallback((e: React.PointerEvent) => {
-        // Only process primary pointer (usually left click for mouse)
-        if (e.button !== 0) return;
+        // Only process primary pointer (usually left click for mouse, first finger for touch)
+        if (e.button !== 0 || !e.isPrimary) return;
 
         // Attempt to prevent default context menus/selections on touch
         // e.preventDefault() cannot be reliably called here without potentially breaking scrolling
@@ -51,7 +51,7 @@ export function useGestures({ onTap, onDoubleTap, onHold }: GestureHandlers) {
     }, [onHold]);
 
     const endInteraction = useCallback((e: React.PointerEvent) => {
-        if (e.button !== 0) return;
+        if (e.button !== 0 || !e.isPrimary) return;
         if (!isDown.current) return;
 
         isDown.current = false;
@@ -98,7 +98,8 @@ export function useGestures({ onTap, onDoubleTap, onHold }: GestureHandlers) {
         }
     }, [onTap, onDoubleTap]);
 
-    const abortInteraction = useCallback(() => {
+    const abortInteraction = useCallback((e: React.PointerEvent) => {
+        if (!e.isPrimary) return;
         if (!isDown.current) return;
         isDown.current = false;
         if (holdTimeout.current) clearTimeout(holdTimeout.current);
