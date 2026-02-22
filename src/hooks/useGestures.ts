@@ -12,10 +12,41 @@ export function useGestures({ onTap, onDoubleTap, onHold }: GestureHandlers) {
     const holdTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isHolding = useRef(false);
     const isDown = useRef(false);
+    const activePointerId = useRef<number | null>(null);
+    const lastTouchTime = useRef(0);
+    const lastTapProcessed = useRef<{ at: number; pointerType: string } | null>(null);
+    const lastTapAt = useRef<number | null>(null);
 
     // Tunable parameters
     const DOUBLE_TAP_DELAY = 300; // ms
     const HOLD_DELAY = 1000; // ms (>=1s per PRD)
+    const EMULATED_MOUSE_SUPPRESSION_MS = 700; // ignore synthetic mouse events after touch
+    const DUPLICATE_TAP_SUPPRESSION_MS = 120; // ignore accidental duplicated pointerup for same tap
+    const MIN_DOUBLE_TAP_INTERVAL_MS = 140; // avoid classifying one physical tap as double-tap
+
+    const shouldIgnoreEvent = (e: React.PointerEvent) => {
+        const now = Date.now();
+
+        if (e.pointerType === 'touch') {
+            lastTouchTime.current = now;
+            return false;
+        }
+
+        // Some mobile browsers emit compatibility mouse events after touch.
+        // Those duplicate events can incorrectly promote a single tap to double tap.
+        if (e.pointerType === 'mouse' && now - lastTouchTime.current < EMULATED_MOUSE_SUPPRESSION_MS) {
+            return true;
+        }
+
+        return false;
+    };
+
+    const isPrimaryActivation = (e: React.PointerEvent) => {
+        if (!e.isPrimary) return false;
+        // `button` is only reliable for mouse pointers.
+        if (e.pointerType === 'mouse' && e.button !== 0) return false;
+        return true;
+    };
 
     const clearTimeouts = () => {
         if (tapTimeout.current) clearTimeout(tapTimeout.current);
@@ -23,26 +54,21 @@ export function useGestures({ onTap, onDoubleTap, onHold }: GestureHandlers) {
     };
 
     const startInteraction = useCallback((e: React.PointerEvent) => {
-        // Only process primary pointer (usually left click for mouse, first finger for touch)
-        if (e.button !== 0 || !e.isPrimary) return;
+        if (shouldIgnoreEvent(e)) return;
+        if (!isPrimaryActivation(e)) return;
 
-        // Attempt to prevent default context menus/selections on touch
-        // e.preventDefault() cannot be reliably called here without potentially breaking scrolling
-        // on some browsers. Better handled via CSS `touch-action: none`.
-
+        activePointerId.current = e.pointerId;
         isDown.current = true;
         isHolding.current = false;
 
-        // Clear previous hold timeout if starting a new one
         if (holdTimeout.current) clearTimeout(holdTimeout.current);
 
         holdTimeout.current = setTimeout(() => {
             if (isDown.current) {
                 isHolding.current = true;
                 if (onHold) {
-                    // Haptic feedback stub
                     if (typeof window !== 'undefined' && window.navigator && window.navigator.vibrate) {
-                        window.navigator.vibrate(50); // Stronger haptic for Hold
+                        window.navigator.vibrate(50);
                     }
                     onHold();
                 }
@@ -51,47 +77,60 @@ export function useGestures({ onTap, onDoubleTap, onHold }: GestureHandlers) {
     }, [onHold]);
 
     const endInteraction = useCallback((e: React.PointerEvent) => {
-        if (e.button !== 0 || !e.isPrimary) return;
+        if (shouldIgnoreEvent(e)) return;
+        if (!isPrimaryActivation(e)) return;
+        if (activePointerId.current !== null && e.pointerId !== activePointerId.current) return;
         if (!isDown.current) return;
 
+        activePointerId.current = null;
         isDown.current = false;
 
         if (holdTimeout.current) clearTimeout(holdTimeout.current);
 
-        // If we held the button, don't trigger tap/double-tap logic
         if (isHolding.current) {
             isHolding.current = false;
             return;
         }
 
-        // It was a short press, handle tap logic
+        const now = Date.now();
+        if (
+            lastTapProcessed.current &&
+            lastTapProcessed.current.pointerType === e.pointerType &&
+            now - lastTapProcessed.current.at < DUPLICATE_TAP_SUPPRESSION_MS
+        ) {
+            return;
+        }
+        lastTapProcessed.current = { at: now, pointerType: e.pointerType };
+
         tapCount.current += 1;
 
+        if (tapCount.current === 2 && lastTapAt.current !== null && now - lastTapAt.current < MIN_DOUBLE_TAP_INTERVAL_MS) {
+            // Too fast to be a deliberate second tap; treat as duplicated signal.
+            tapCount.current = 1;
+            return;
+        }
+
+        lastTapAt.current = now;
+
         if (tapCount.current === 1) {
-            // Start waiting for a potential second tap
             tapTimeout.current = setTimeout(() => {
-                // Timeout expired, so it's a single tap
                 tapCount.current = 0;
                 if (onTap) {
-                    // Haptic feedback stub
                     if (typeof window !== 'undefined' && window.navigator && window.navigator.vibrate) {
-                        window.navigator.vibrate(10); // Light haptic for Tap
+                        window.navigator.vibrate(10);
                     }
                     onTap();
                 }
             }, DOUBLE_TAP_DELAY);
         } else if (tapCount.current === 2) {
-            // Second tap arrived before timeout!
             clearTimeouts();
             tapCount.current = 0;
             if (onDoubleTap) {
-                // Haptic feedback stub
                 if (typeof window !== 'undefined' && window.navigator && window.navigator.vibrate) {
-                    window.navigator.vibrate([10, 50, 10]); // Distinct haptic
+                    window.navigator.vibrate([10, 50, 10]);
                 }
                 onDoubleTap();
             } else if (onTap) {
-                // If double-tap is not implemented in this context, gracefully fallback to two single taps
                 onTap();
                 onTap();
             }
@@ -99,8 +138,12 @@ export function useGestures({ onTap, onDoubleTap, onHold }: GestureHandlers) {
     }, [onTap, onDoubleTap]);
 
     const abortInteraction = useCallback((e: React.PointerEvent) => {
+        if (shouldIgnoreEvent(e)) return;
         if (!e.isPrimary) return;
+        if (activePointerId.current !== null && e.pointerId !== activePointerId.current) return;
         if (!isDown.current) return;
+
+        activePointerId.current = null;
         isDown.current = false;
         if (holdTimeout.current) clearTimeout(holdTimeout.current);
         isHolding.current = false;
@@ -109,7 +152,7 @@ export function useGestures({ onTap, onDoubleTap, onHold }: GestureHandlers) {
     return {
         onPointerDown: startInteraction,
         onPointerUp: endInteraction,
-        onPointerLeave: abortInteraction, // Cancel if cursor leaves the button while pressed
-        onPointerCancel: abortInteraction, // Cancel if gesture is aborted by the system
+        onPointerLeave: abortInteraction,
+        onPointerCancel: abortInteraction,
     };
 }

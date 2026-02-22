@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useAppStore } from '../store/appStore';
 
 /**
@@ -12,7 +12,7 @@ export function useAutoSaveTimeout() {
     // We only track inactivity when in these specific modes
     const isEditingMode = ['SET_ALARM_HH', 'SET_ALARM_MM', 'SET_TIME_HH', 'SET_TIME_MM'].includes(mode);
 
-    const resetTimeout = () => {
+    const resetTimeout = useCallback(() => {
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
 
         if (isEditingMode) {
@@ -34,7 +34,7 @@ export function useAutoSaveTimeout() {
 
             }, 5000); // 5 seconds PRD auto-save
         }
-    };
+    }, [isEditingMode, mode, setMode, showBanner]);
 
     // Run on mount, or when mode/alarm time changes
     useEffect(() => {
@@ -42,7 +42,7 @@ export function useAutoSaveTimeout() {
         return () => {
             if (timeoutRef.current) clearTimeout(timeoutRef.current);
         };
-    }, [mode, alarmTime]);
+    }, [mode, alarmTime, resetTimeout]);
 
     return resetTimeout;
 }

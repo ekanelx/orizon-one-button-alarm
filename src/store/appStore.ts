@@ -86,7 +86,8 @@ export const useAppStore = create<AppState>()(
                 return {
                     isEnabled: nextState,
                     banner: nextState ? 'ALARM_ENABLED' : 'ALARM_DISABLED',
-                    coachmarkShown: true // Hide coachmark after first toggle
+                    coachmarkShown: true, // Hide coachmark after first toggle
+                    snoozeTime: nextState ? state.snoozeTime : null
                 };
             }),
 
@@ -103,8 +104,7 @@ export const useAppStore = create<AppState>()(
             partialize: (state) => ({
                 alarmTime: state.alarmTime,
                 isEnabled: state.isEnabled,
-                coachmarkShown: state.coachmarkShown,
-                snoozeTime: state.snoozeTime
+                coachmarkShown: state.coachmarkShown
             })
         }
     )
