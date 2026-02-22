@@ -1,5 +1,30 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage, type StateStorage } from 'zustand/middleware';
+
+// Safe storage wrapper to prevent Brave Desktop crashes when Shields block localStorage
+const safeStorage: StateStorage = {
+    getItem: (name: string): string | null => {
+        try {
+            return localStorage.getItem(name);
+        } catch (err) {
+            return null;
+        }
+    },
+    setItem: (name: string, value: string): void => {
+        try {
+            localStorage.setItem(name, value);
+        } catch (err) {
+            // ignore
+        }
+    },
+    removeItem: (name: string): void => {
+        try {
+            localStorage.removeItem(name);
+        } catch (err) {
+            // ignore
+        }
+    },
+};
 
 export type AppMode =
     | 'CLOCK'
@@ -101,6 +126,7 @@ export const useAppStore = create<AppState>()(
         }),
         {
             name: 'one-button-alarm-storage',
+            storage: createJSONStorage(() => safeStorage),
             partialize: (state) => ({
                 alarmTime: state.alarmTime,
                 isEnabled: state.isEnabled,

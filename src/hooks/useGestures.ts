@@ -12,40 +12,38 @@ export function useGestures({ onTap, onDoubleTap, onHold }: GestureHandlers) {
     const holdTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isHolding = useRef(false);
     const isDown = useRef(false);
-    const activePointerId = useRef<number | null>(null);
+
+    // For deduplication
     const lastTouchTime = useRef(0);
     const lastTapProcessed = useRef<{ at: number; pointerType: string } | null>(null);
     const lastTapAt = useRef<number | null>(null);
 
-    // Tunable parameters
-    const DOUBLE_TAP_DELAY = 300; // ms
-    const HOLD_DELAY = 1000; // ms (>=1s per PRD)
-    const EMULATED_MOUSE_SUPPRESSION_MS = 700; // ignore synthetic mouse events after touch
-    const DUPLICATE_TAP_SUPPRESSION_MS = 120; // ignore accidental duplicated pointerup for same tap
-    const MIN_DOUBLE_TAP_INTERVAL_MS = 140; // avoid classifying one physical tap as double-tap
+    const DOUBLE_TAP_DELAY = 300;
+    const HOLD_DELAY = 1000;
+    const EMULATED_MOUSE_SUPPRESSION_MS = 700;
+    const DUPLICATE_TAP_SUPPRESSION_MS = 120;
+    const MIN_DOUBLE_TAP_INTERVAL_MS = 140;
 
-    const shouldIgnoreEvent = (e: React.PointerEvent) => {
+    // Helper to abstract pointer type detection for standard Mouse/Touch events
+    const getPointerType = (e: React.TouchEvent | React.MouseEvent) => {
+        return 'touches' in e ? 'touch' : 'mouse';
+    };
+
+    const shouldIgnoreEvent = (e: React.TouchEvent | React.MouseEvent) => {
+        const type = getPointerType(e);
         const now = Date.now();
 
-        if (e.pointerType === 'touch') {
+        if (type === 'touch') {
             lastTouchTime.current = now;
             return false;
         }
 
-        // Some mobile browsers emit compatibility mouse events after touch.
-        // Those duplicate events can incorrectly promote a single tap to double tap.
-        if (e.pointerType === 'mouse' && now - lastTouchTime.current < EMULATED_MOUSE_SUPPRESSION_MS) {
+        // Ignore synthetic mouse events fired by mobile browsers shortly after touches
+        if (type === 'mouse' && now - lastTouchTime.current < EMULATED_MOUSE_SUPPRESSION_MS) {
             return true;
         }
 
         return false;
-    };
-
-    const isPrimaryActivation = (e: React.PointerEvent) => {
-        if (!e.isPrimary) return false;
-        // `button` is only reliable for mouse pointers.
-        if (e.pointerType === 'mouse' && e.button !== 0) return false;
-        return true;
     };
 
     const clearTimeouts = () => {
@@ -53,13 +51,21 @@ export function useGestures({ onTap, onDoubleTap, onHold }: GestureHandlers) {
         if (holdTimeout.current) clearTimeout(holdTimeout.current);
     };
 
-    const startInteraction = useCallback((e: React.PointerEvent) => {
+    const startInteraction = useCallback((e: React.TouchEvent | React.MouseEvent) => {
         if (shouldIgnoreEvent(e)) return;
-        if (!isPrimaryActivation(e)) return;
 
+        // Only process primary interactions
+        if ('button' in e && e.button !== 0) return;
+
+        // Force stop propagation so touches on the button don't bubble to the background
         e.stopPropagation();
 
-        activePointerId.current = e.pointerId;
+        // Critically: stop browser default gestures like swipe-to-back
+        // This relies on React TouchEvents (PointerEvents don't support preventDefault like this reliably)
+        if ('touches' in e && e.cancelable) {
+            e.preventDefault();
+        }
+
         isDown.current = true;
         isHolding.current = false;
 
@@ -80,15 +86,13 @@ export function useGestures({ onTap, onDoubleTap, onHold }: GestureHandlers) {
         }, HOLD_DELAY);
     }, [onHold]);
 
-    const endInteraction = useCallback((e: React.PointerEvent) => {
+    const endInteraction = useCallback((e: React.TouchEvent | React.MouseEvent) => {
         if (shouldIgnoreEvent(e)) return;
-        if (!isPrimaryActivation(e)) return;
-        if (activePointerId.current !== null && e.pointerId !== activePointerId.current) return;
+        if ('button' in e && e.button !== 0) return;
         if (!isDown.current) return;
 
         e.stopPropagation();
 
-        activePointerId.current = null;
         isDown.current = false;
 
         if (holdTimeout.current) clearTimeout(holdTimeout.current);
@@ -98,15 +102,18 @@ export function useGestures({ onTap, onDoubleTap, onHold }: GestureHandlers) {
             return;
         }
 
+        const type = getPointerType(e);
         const now = Date.now();
+
+        // Suppress bounce / physical duplicate events
         if (
             lastTapProcessed.current &&
-            lastTapProcessed.current.pointerType === e.pointerType &&
+            lastTapProcessed.current.pointerType === type &&
             now - lastTapProcessed.current.at < DUPLICATE_TAP_SUPPRESSION_MS
         ) {
             return;
         }
-        lastTapProcessed.current = { at: now, pointerType: e.pointerType };
+        lastTapProcessed.current = { at: now, pointerType: type };
 
         tapCount.current += 1;
 
@@ -147,22 +154,23 @@ export function useGestures({ onTap, onDoubleTap, onHold }: GestureHandlers) {
         }
     }, [onTap, onDoubleTap]);
 
-    const abortInteraction = useCallback((e: React.PointerEvent) => {
-        if (shouldIgnoreEvent(e)) return;
-        if (!e.isPrimary) return;
-        if (activePointerId.current !== null && e.pointerId !== activePointerId.current) return;
+    const abortInteraction = useCallback((e?: React.TouchEvent | React.MouseEvent) => {
+        if (e && shouldIgnoreEvent(e)) return;
+        if (e && 'button' in e && e.button !== 0) return;
+
         if (!isDown.current) return;
 
-        activePointerId.current = null;
         isDown.current = false;
         if (holdTimeout.current) clearTimeout(holdTimeout.current);
         isHolding.current = false;
     }, []);
 
     return {
-        onPointerDown: startInteraction,
-        onPointerUp: endInteraction,
-        onPointerLeave: abortInteraction,
-        onPointerCancel: abortInteraction,
+        onTouchStart: startInteraction,
+        onTouchEnd: endInteraction,
+        onTouchCancel: abortInteraction,
+        onMouseDown: startInteraction,
+        onMouseUp: endInteraction,
+        onMouseLeave: abortInteraction,
     };
 }
