@@ -19,6 +19,7 @@ function App() {
     incrementCurrentTimeHour,
     incrementCurrentTimeMinute,
     showBanner,
+    snoozeTime,
     setSnoozeTime
   } = useAppStore();
 
@@ -42,17 +43,25 @@ function App() {
 
   // Check for Ringing Condition
   useEffect(() => {
-    // Only check if we are in normal viewing modes and alarm is enabled
-    if (isEnabled && (mode === 'CLOCK' || mode === 'ALARM')) {
-      const isAlarmTime =
-        displayTime.getHours() === alarmTime.h &&
-        displayTime.getMinutes() === alarmTime.m;
+    if (!isEnabled || (mode !== 'CLOCK' && mode !== 'ALARM')) return;
 
-      if (isAlarmTime && displayTime.getSeconds() === 0) {
-        setMode('RINGING');
+    const isTopOfMinute = displayTime.getSeconds() === 0;
+    const isSnoozeDue =
+      snoozeTime !== null &&
+      displayTime.getHours() === snoozeTime.getHours() &&
+      displayTime.getMinutes() === snoozeTime.getMinutes();
+
+    const isAlarmTime =
+      displayTime.getHours() === alarmTime.h &&
+      displayTime.getMinutes() === alarmTime.m;
+
+    if (isTopOfMinute && (isSnoozeDue || (snoozeTime === null && isAlarmTime))) {
+      if (isSnoozeDue) {
+        setSnoozeTime(null);
       }
+      setMode('RINGING');
     }
-  }, [displayTime, isEnabled, alarmTime, mode, setMode]);
+  }, [displayTime, isEnabled, alarmTime, snoozeTime, mode, setMode, setSnoozeTime]);
 
   // View Resolution Logic
   const renderHeader = () => {
@@ -136,6 +145,7 @@ function App() {
           },
           onHold: () => {
             // Stop
+            setSnoozeTime(null);
             showBanner('STOPPED');
             setMode('CLOCK');
           },
@@ -149,7 +159,7 @@ function App() {
       {/* Mobile Device Constraint Wrapper */}
       <div
         className="relative w-full max-w-[402px] h-[100dvh] max-h-[874px] overflow-hidden flex flex-col sm:border sm:border-[#3A3A3C] sm:rounded-[40px] shadow-2xl"
-        style={{ backgroundImage: "url('/background.png')", backgroundSize: "cover", backgroundPosition: "center" }}
+        style={{ backgroundImage: "url('/background.png')", backgroundSize: 'cover', backgroundPosition: 'center' }}
       >
 
         <Banners />
